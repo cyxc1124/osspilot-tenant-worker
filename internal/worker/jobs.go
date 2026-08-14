@@ -41,7 +41,18 @@ type Jobs struct {
 	Log      *audit.Logger
 }
 
+func skipS3(s3 *storage.Client, task string) bool {
+	if s3 != nil {
+		return false
+	}
+	slog.Info("skipped, S3 not configured", "task", task)
+	return true
+}
+
 func (j *Jobs) Inventory(ctx context.Context, _ *asynq.Task) error {
+	if skipS3(j.S3, TaskInventory) {
+		return nil
+	}
 	items, err := j.Buckets.ListActive(ctx)
 	if err != nil {
 		return err
@@ -56,6 +67,9 @@ func (j *Jobs) Inventory(ctx context.Context, _ *asynq.Task) error {
 }
 
 func (j *Jobs) InventoryBucket(ctx context.Context, t *asynq.Task) error {
+	if skipS3(j.S3, TaskInventoryBucket) {
+		return nil
+	}
 	var req struct {
 		BucketName string `json:"bucket_name"`
 	}
@@ -101,6 +115,9 @@ func (j *Jobs) scanBucket(ctx context.Context, b bucket.Bucket) error {
 }
 
 func (j *Jobs) Trash(ctx context.Context, _ *asynq.Task) error {
+	if skipS3(j.S3, TaskTrash) {
+		return nil
+	}
 	if j.Settings == nil {
 		return nil
 	}
@@ -136,6 +153,9 @@ func shouldCleanupTrash(enabled bool, days int) bool {
 }
 
 func (j *Jobs) CleanVersions(ctx context.Context, _ *asynq.Task) error {
+	if skipS3(j.S3, TaskVersions) {
+		return nil
+	}
 	if j.Settings == nil || j.Versions == nil {
 		return nil
 	}
@@ -167,6 +187,9 @@ func (j *Jobs) CleanVersions(ctx context.Context, _ *asynq.Task) error {
 }
 
 func (j *Jobs) CleanMultipart(ctx context.Context, _ *asynq.Task) error {
+	if skipS3(j.S3, TaskMultipart) {
+		return nil
+	}
 	if j.Settings == nil || j.Uploads == nil {
 		return nil
 	}

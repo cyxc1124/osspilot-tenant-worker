@@ -11,14 +11,11 @@ OssPilot 租户后台 worker（Go）。消费 [osspilot-tenant-api](https://gith
 ```bash
 export DATABASE_URL=postgres://osspilot:osspilot@127.0.0.1:5432/osspilot_tenant?sslmode=disable
 export REDIS_URL=redis://127.0.0.1:6379/0
-export S3_ENDPOINT=...
-export RGW_ACCESS_KEY=...
-export RGW_SECRET_KEY=...
 go test ./...
 go run ./cmd/worker
 ```
 
-未设 `REDIS_URL` / `DATABASE_URL` / S3 凭证时退出。
+未设 `REDIS_URL` / `DATABASE_URL` 时退出。未设 S3 时进程仍监听，清单/清理/批量任务跳过。
 
 ## 许可
 

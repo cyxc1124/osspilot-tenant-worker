@@ -15,6 +15,9 @@ import (
 )
 
 func (j *Jobs) BatchDelete(ctx context.Context, t *asynq.Task) error {
+	if skipS3(j.S3, queue.TaskBatchDelete) {
+		return nil
+	}
 	var p queue.BatchDelete
 	if err := json.Unmarshal(t.Payload(), &p); err != nil || strings.TrimSpace(p.BucketName) == "" || len(p.Keys) == 0 {
 		return fmt.Errorf("invalid batch delete payload")
@@ -45,6 +48,9 @@ func (j *Jobs) BatchDelete(ctx context.Context, t *asynq.Task) error {
 }
 
 func (j *Jobs) BatchCopy(ctx context.Context, t *asynq.Task) error {
+	if skipS3(j.S3, queue.TaskBatchCopy) {
+		return nil
+	}
 	var p queue.BatchCopy
 	if err := json.Unmarshal(t.Payload(), &p); err != nil || strings.TrimSpace(p.BucketName) == "" || len(p.Items) == 0 {
 		return fmt.Errorf("invalid batch copy payload")
@@ -83,6 +89,9 @@ func (j *Jobs) BatchCopy(ctx context.Context, t *asynq.Task) error {
 }
 
 func (j *Jobs) BatchMove(ctx context.Context, t *asynq.Task) error {
+	if skipS3(j.S3, queue.TaskBatchMove) {
+		return nil
+	}
 	var p queue.BatchMove
 	if err := json.Unmarshal(t.Payload(), &p); err != nil || strings.TrimSpace(p.BucketName) == "" || len(p.Items) == 0 {
 		return fmt.Errorf("invalid batch move payload")
