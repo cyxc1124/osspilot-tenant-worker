@@ -140,7 +140,10 @@ func (j *Jobs) scanBucket(ctx context.Context, s3 *storage.Client, b bucket.Buck
 		}
 		token = page.Token
 	}
-	return j.Objects.PurgeUnseen(ctx, b.ID, started)
+	if err := j.Objects.PurgeUnseen(ctx, b.ID, started); err != nil {
+		return err
+	}
+	return j.Buckets.MarkInventoried(ctx, b.ID, time.Now().UTC())
 }
 
 func (j *Jobs) Trash(ctx context.Context, _ *asynq.Task) error {
