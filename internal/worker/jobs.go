@@ -38,6 +38,7 @@ type Jobs struct {
 	Settings *platform.Store
 	Stats    *stats.Store
 	S3       *storage.Client
+	S3FB     storage.Config
 	Log      *audit.Logger
 }
 
@@ -49,8 +50,35 @@ func skipS3(s3 *storage.Client, task string) bool {
 	return true
 }
 
+func overlayS3(fb storage.Config, rows map[string]string) storage.Config {
+	if v := strings.TrimSpace(rows["s3_endpoint"]); v != "" {
+		fb.Endpoint = v
+	}
+	if v := strings.TrimSpace(rows["rgw_access_key"]); v != "" {
+		fb.AccessKey = v
+	}
+	if v := strings.TrimSpace(rows["rgw_secret_key"]); v != "" {
+		fb.SecretKey = v
+	}
+	return fb
+}
+
+func (j *Jobs) client(ctx context.Context) *storage.Client {
+	cfg := j.S3FB
+	if j.Settings != nil {
+		if rows, err := j.Settings.Map(ctx); err == nil {
+			cfg = overlayS3(cfg, rows)
+		}
+	}
+	if !cfg.Ready() {
+		return nil
+	}
+	return storage.New(cfg)
+}
+
 func (j *Jobs) Inventory(ctx context.Context, _ *asynq.Task) error {
-	if skipS3(j.S3, TaskInventory) {
+	s3 := j.client(ctx)
+	if skipS3(s3, TaskInventory) {
 		return nil
 	}
 	items, err := j.Buckets.ListActive(ctx)
@@ -58,7 +86,7 @@ func (j *Jobs) Inventory(ctx context.Context, _ *asynq.Task) error {
 		return err
 	}
 	for _, b := range items {
-		if err := j.scanBucket(ctx, b); err != nil {
+		if err := j.scanBucket(ctx, s3, b); err != nil {
 			return fmt.Errorf("inventory %s: %w", b.BucketName, err)
 		}
 	}
@@ -67,7 +95,8 @@ func (j *Jobs) Inventory(ctx context.Context, _ *asynq.Task) error {
 }
 
 func (j *Jobs) InventoryBucket(ctx context.Context, t *asynq.Task) error {
-	if skipS3(j.S3, TaskInventoryBucket) {
+	s3 := j.client(ctx)
+	if skipS3(s3, TaskInventoryBucket) {
 		return nil
 	}
 	var req struct {
@@ -83,18 +112,18 @@ func (j *Jobs) InventoryBucket(ctx context.Context, t *asynq.Task) error {
 	if b == nil || b.Status != "active" {
 		return fmt.Errorf("bucket %s not found", req.BucketName)
 	}
-	if err := j.scanBucket(ctx, *b); err != nil {
+	if err := j.scanBucket(ctx, s3, *b); err != nil {
 		return fmt.Errorf("inventory %s: %w", req.BucketName, err)
 	}
 	slog.Info("inventory bucket done", "bucket", req.BucketName)
 	return nil
 }
 
-func (j *Jobs) scanBucket(ctx context.Context, b bucket.Bucket) error {
+func (j *Jobs) scanBucket(ctx context.Context, s3 *storage.Client, b bucket.Bucket) error {
 	started := time.Now().UTC()
 	token := ""
 	for {
-		page, err := j.S3.ListObjects(ctx, b.BucketName, token, 1000)
+		page, err := s3.ListObjects(ctx, b.BucketName, token, 1000)
 		if err != nil {
 			return err
 		}
@@ -115,7 +144,8 @@ func (j *Jobs) scanBucket(ctx context.Context, b bucket.Bucket) error {
 }
 
 func (j *Jobs) Trash(ctx context.Context, _ *asynq.Task) error {
-	if skipS3(j.S3, TaskTrash) {
+	s3 := j.client(ctx)
+	if skipS3(s3, TaskTrash) {
 		return nil
 	}
 	if j.Settings == nil {
@@ -135,7 +165,7 @@ func (j *Jobs) Trash(ctx context.Context, _ *asynq.Task) error {
 	}
 	var deleted int
 	for _, item := range items {
-		if err := j.S3.DeleteObject(ctx, item.BucketName, item.Key); err != nil {
+		if err := s3.DeleteObject(ctx, item.BucketName, item.Key); err != nil {
 			slog.Warn("trash delete storage", "bucket", item.BucketName, "key", item.Key, "err", err)
 			continue
 		}
@@ -153,7 +183,8 @@ func shouldCleanupTrash(enabled bool, days int) bool {
 }
 
 func (j *Jobs) CleanVersions(ctx context.Context, _ *asynq.Task) error {
-	if skipS3(j.S3, TaskVersions) {
+	s3 := j.client(ctx)
+	if skipS3(s3, TaskVersions) {
 		return nil
 	}
 	if j.Settings == nil || j.Versions == nil {
@@ -173,7 +204,7 @@ func (j *Jobs) CleanVersions(ctx context.Context, _ *asynq.Task) error {
 	}
 	var deleted int
 	for _, item := range items {
-		if err := j.S3.DeleteObject(ctx, item.BucketName, item.StorageKey); err != nil {
+		if err := s3.DeleteObject(ctx, item.BucketName, item.StorageKey); err != nil {
 			slog.Warn("version delete storage", "bucket", item.BucketName, "key", item.StorageKey, "err", err)
 			continue
 		}
@@ -187,7 +218,8 @@ func (j *Jobs) CleanVersions(ctx context.Context, _ *asynq.Task) error {
 }
 
 func (j *Jobs) CleanMultipart(ctx context.Context, _ *asynq.Task) error {
-	if skipS3(j.S3, TaskMultipart) {
+	s3 := j.client(ctx)
+	if skipS3(s3, TaskMultipart) {
 		return nil
 	}
 	if j.Settings == nil || j.Uploads == nil {
@@ -209,7 +241,7 @@ func (j *Jobs) CleanMultipart(ctx context.Context, _ *asynq.Task) error {
 	var aborted int
 	for _, item := range items {
 		if item.UploadID != nil && *item.UploadID != "" {
-			if err := j.S3.AbortMultipart(ctx, item.BucketName, item.ObjectKey, *item.UploadID); err != nil {
+			if err := s3.AbortMultipart(ctx, item.BucketName, item.ObjectKey, *item.UploadID); err != nil {
 				slog.Warn("multipart abort storage", "bucket", item.BucketName, "key", item.ObjectKey, "err", err)
 				continue
 			}

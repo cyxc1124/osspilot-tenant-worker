@@ -66,6 +66,7 @@ func main() {
 		Settings: platform.NewStore(pool),
 		Stats:    stats.NewStore(pool),
 		S3:       s3,
+		S3FB:     s3cfg,
 		Log:      audit.NewLogger(pool),
 	}
 
@@ -112,10 +113,8 @@ func main() {
 
 	client := asynq.NewClient(redisOpt)
 	defer client.Close()
-	if s3 != nil {
-		if _, err := client.Enqueue(asynq.NewTask(worker.TaskInventory, nil), asynq.MaxRetry(3), asynq.Timeout(time.Hour)); err != nil {
-			slog.Warn("enqueue startup inventory", "err", err)
-		}
+	if _, err := client.Enqueue(asynq.NewTask(worker.TaskInventory, nil), asynq.MaxRetry(3), asynq.Timeout(time.Hour)); err != nil {
+		slog.Warn("enqueue startup inventory", "err", err)
 	}
 	if _, err := client.Enqueue(asynq.NewTask(worker.TaskRequestStats, nil), asynq.MaxRetry(3), asynq.Timeout(10*time.Minute)); err != nil {
 		slog.Warn("enqueue startup request stats", "err", err)
