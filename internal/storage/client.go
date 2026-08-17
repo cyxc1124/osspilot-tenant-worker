@@ -361,11 +361,22 @@ type ListPage struct {
 	Token     string
 }
 
+func (c *Client) ListPrefixFlat(ctx context.Context, bucket, prefix, token string, maxKeys int32) (ListPage, error) {
+	return c.list(ctx, bucket, prefix, token, maxKeys)
+}
+
 func (c *Client) ListObjects(ctx context.Context, bucket, token string, maxKeys int32) (ListPage, error) {
+	return c.list(ctx, bucket, "", token, maxKeys)
+}
+
+func (c *Client) list(ctx context.Context, bucket, prefix, token string, maxKeys int32) (ListPage, error) {
 	if maxKeys < 1 {
 		maxKeys = 1000
 	}
 	in := &s3.ListObjectsV2Input{Bucket: aws.String(bucket), MaxKeys: aws.Int32(maxKeys)}
+	if prefix != "" {
+		in.Prefix = aws.String(prefix)
+	}
 	if token != "" {
 		in.ContinuationToken = aws.String(token)
 	}

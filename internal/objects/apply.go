@@ -30,7 +30,23 @@ func ApplyDelete(ctx context.Context, s3 *storage.Client, store *Store, b *bucke
 	return store.MoveKey(ctx, b.ID, b.BucketName, key, trashKey, meta.Size, meta.ETag, meta.ContentType, userID, now)
 }
 
+var ErrDestExists = errors.New("Destination already exists")
+
+func rejectIfExists(ctx context.Context, s3 *storage.Client, bucket, key string) error {
+	_, err := s3.HeadObject(ctx, bucket, key)
+	if err == nil {
+		return ErrDestExists
+	}
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
 func ApplyCopy(ctx context.Context, s3 *storage.Client, store *Store, src, dest *bucket.Bucket, userID int64, srcKey, destKey string, now time.Time) error {
+	if err := rejectIfExists(ctx, s3, dest.BucketName, destKey); err != nil {
+		return err
+	}
 	meta, err := s3.HeadObject(ctx, src.BucketName, srcKey)
 	if err != nil {
 		return err
@@ -43,6 +59,11 @@ func ApplyCopy(ctx context.Context, s3 *storage.Client, store *Store, src, dest 
 }
 
 func ApplyMove(ctx context.Context, s3 *storage.Client, store *Store, b *bucket.Bucket, userID int64, src, dest string, now time.Time) error {
+	if src != dest {
+		if err := rejectIfExists(ctx, s3, b.BucketName, dest); err != nil {
+			return err
+		}
+	}
 	meta, err := s3.HeadObject(ctx, b.BucketName, src)
 	if err != nil {
 		return err
@@ -74,21 +95,14 @@ func ExpandDeleteKeys(ctx context.Context, s3 *storage.Client, store *Store, b *
 			resolved = append(resolved, key)
 			continue
 		}
-		children, err := store.ListLiveKeys(ctx, b.ID, key)
+		children, err := listPrefixKeys(ctx, s3, b.BucketName, key)
 		if err != nil {
-			failed = append(failed, opFailure{Key: key, Error: "database error"})
+			failed = append(failed, opFailure{Key: key, Error: "storage error"})
 			continue
 		}
 		if len(children) == 0 {
-			if _, err := s3.HeadObject(ctx, b.BucketName, key); err != nil {
-				if errors.Is(err, storage.ErrNotFound) {
-					failed = append(failed, opFailure{Key: key, Error: "Directory not found or empty"})
-				} else {
-					failed = append(failed, opFailure{Key: key, Error: "storage error"})
-				}
-				continue
-			}
-			children = []string{key}
+			failed = append(failed, opFailure{Key: key, Error: "Directory not found or empty"})
+			continue
 		}
 		for _, child := range children {
 			if _, ok := seen[child]; ok {
@@ -104,12 +118,35 @@ func ExpandDeleteKeys(ctx context.Context, s3 *storage.Client, store *Store, b *
 	return resolved, failed
 }
 
+func listPrefixKeys(ctx context.Context, s3 *storage.Client, bucket, prefix string) ([]string, error) {
+	var keys []string
+	token := ""
+	for {
+		page, err := s3.ListPrefixFlat(ctx, bucket, prefix, token, 1000)
+		if err != nil {
+			return nil, err
+		}
+		for _, obj := range page.Objects {
+			if obj.Key != "" {
+				keys = append(keys, obj.Key)
+			}
+		}
+		if !page.Truncated || page.Token == "" {
+			return keys, nil
+		}
+		token = page.Token
+	}
+}
+
 type opFailure struct {
 	Key   string `json:"key"`
 	Error string `json:"error"`
 }
 
 func CopyErr(err error) string {
+	if errors.Is(err, ErrDestExists) {
+		return ErrDestExists.Error()
+	}
 	if errors.Is(err, storage.ErrNotFound) {
 		return "Object not found"
 	}

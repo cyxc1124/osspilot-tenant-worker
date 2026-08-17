@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -120,9 +121,22 @@ func main() {
 		slog.Warn("enqueue startup request stats", "err", err)
 	}
 
+	go serveHealthz(cfg.HTTPAddr)
 	slog.Info("worker listen")
 	if err := srv.Run(mux); err != nil {
 		slog.Error("worker", "err", err)
 		os.Exit(1)
+	}
+}
+
+func serveHealthz(addr string) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+	slog.Info("healthz listen", "addr", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		slog.Error("healthz", "err", err)
 	}
 }
