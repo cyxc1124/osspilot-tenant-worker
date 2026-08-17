@@ -24,6 +24,10 @@
 chore: 初始化租户 worker 仓
 ```
 
+## 发布
+
+功能 PR 先合进 `develop`。要发版本时：`develop` 开 PR 到 `main`，合并后再打 annotated tag 并 push。不要在 `develop` 上直接打发行 tag。只改 CI Action 不用打 tag。
+
 ## 实现
 
 - Go 1.26，`pgx/v5`，asynq。不用 Gin / GORM。不跑 migrate。
