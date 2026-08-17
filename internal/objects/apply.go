@@ -30,7 +30,23 @@ func ApplyDelete(ctx context.Context, s3 *storage.Client, store *Store, b *bucke
 	return store.MoveKey(ctx, b.ID, b.BucketName, key, trashKey, meta.Size, meta.ETag, meta.ContentType, userID, now)
 }
 
+var ErrDestExists = errors.New("Destination already exists")
+
+func rejectIfExists(ctx context.Context, s3 *storage.Client, bucket, key string) error {
+	_, err := s3.HeadObject(ctx, bucket, key)
+	if err == nil {
+		return ErrDestExists
+	}
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
 func ApplyCopy(ctx context.Context, s3 *storage.Client, store *Store, src, dest *bucket.Bucket, userID int64, srcKey, destKey string, now time.Time) error {
+	if err := rejectIfExists(ctx, s3, dest.BucketName, destKey); err != nil {
+		return err
+	}
 	meta, err := s3.HeadObject(ctx, src.BucketName, srcKey)
 	if err != nil {
 		return err
@@ -43,6 +59,11 @@ func ApplyCopy(ctx context.Context, s3 *storage.Client, store *Store, src, dest 
 }
 
 func ApplyMove(ctx context.Context, s3 *storage.Client, store *Store, b *bucket.Bucket, userID int64, src, dest string, now time.Time) error {
+	if src != dest {
+		if err := rejectIfExists(ctx, s3, b.BucketName, dest); err != nil {
+			return err
+		}
+	}
 	meta, err := s3.HeadObject(ctx, b.BucketName, src)
 	if err != nil {
 		return err
@@ -110,6 +131,9 @@ type opFailure struct {
 }
 
 func CopyErr(err error) string {
+	if errors.Is(err, ErrDestExists) {
+		return ErrDestExists.Error()
+	}
 	if errors.Is(err, storage.ErrNotFound) {
 		return "Object not found"
 	}
