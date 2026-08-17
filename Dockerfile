@@ -17,6 +17,13 @@ FROM alpine:3.22 AS runtime
 
 ARG GIT_TAG=""
 ARG GIT_COMMIT=""
+ARG GIT_BRANCH=""
+ARG BUILD_TIME=""
+
+ENV GIT_TAG=$GIT_TAG \
+    GIT_COMMIT=$GIT_COMMIT \
+    GIT_BRANCH=$GIT_BRANCH \
+    BUILD_TIME=$BUILD_TIME
 
 RUN apk add --no-cache ca-certificates tzdata \
  && adduser -D -H -u 10001 app
@@ -33,6 +40,7 @@ LABEL org.opencontainers.image.version=${GIT_TAG}
 LABEL org.opencontainers.image.revision=${GIT_COMMIT}
 
 USER app
+EXPOSE 8080
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["worker"]
