@@ -15,6 +15,10 @@ import (
 )
 
 func (j *Jobs) BatchDelete(ctx context.Context, t *asynq.Task) error {
+	s3 := j.client(ctx)
+	if skipS3(s3, queue.TaskBatchDelete) {
+		return nil
+	}
 	var p queue.BatchDelete
 	if err := json.Unmarshal(t.Payload(), &p); err != nil || strings.TrimSpace(p.BucketName) == "" || len(p.Keys) == 0 {
 		return fmt.Errorf("invalid batch delete payload")
@@ -26,14 +30,14 @@ func (j *Jobs) BatchDelete(ctx context.Context, t *asynq.Task) error {
 	if b == nil {
 		return fmt.Errorf("bucket %s not found", p.BucketName)
 	}
-	resolved, failed := objects.ExpandDeleteKeys(ctx, j.S3, j.Objects, b, p.Keys)
+	resolved, failed := objects.ExpandDeleteKeys(ctx, s3, j.Objects, b, p.Keys)
 	now := time.Now()
 	var ok int
 	for _, f := range failed {
 		j.audit(ctx, p.UserID, p.AccountID, p.BucketName, f.Key, "delete", "failure", f.Error, p.SourceIP, p.UserAgent)
 	}
 	for _, key := range resolved {
-		if err := objects.ApplyDelete(ctx, j.S3, j.Objects, b, p.UserID, key, p.Permanent, now); err != nil {
+		if err := objects.ApplyDelete(ctx, s3, j.Objects, b, p.UserID, key, p.Permanent, now); err != nil {
 			j.audit(ctx, p.UserID, p.AccountID, p.BucketName, key, "delete", "failure", objects.CopyErr(err), p.SourceIP, p.UserAgent)
 			continue
 		}
@@ -45,6 +49,10 @@ func (j *Jobs) BatchDelete(ctx context.Context, t *asynq.Task) error {
 }
 
 func (j *Jobs) BatchCopy(ctx context.Context, t *asynq.Task) error {
+	s3 := j.client(ctx)
+	if skipS3(s3, queue.TaskBatchCopy) {
+		return nil
+	}
 	var p queue.BatchCopy
 	if err := json.Unmarshal(t.Payload(), &p); err != nil || strings.TrimSpace(p.BucketName) == "" || len(p.Items) == 0 {
 		return fmt.Errorf("invalid batch copy payload")
@@ -71,7 +79,7 @@ func (j *Jobs) BatchCopy(ctx context.Context, t *asynq.Task) error {
 			j.audit(ctx, p.UserID, p.AccountID, destName, it.SourceKey, "copy", "failure", "Bucket not found", p.SourceIP, p.UserAgent)
 			continue
 		}
-		if err := objects.ApplyCopy(ctx, j.S3, j.Objects, src, dest, p.UserID, it.SourceKey, it.DestKey, now); err != nil {
+		if err := objects.ApplyCopy(ctx, s3, j.Objects, src, dest, p.UserID, it.SourceKey, it.DestKey, now); err != nil {
 			j.audit(ctx, p.UserID, p.AccountID, dest.BucketName, it.DestKey, "copy", "failure", objects.CopyErr(err), p.SourceIP, p.UserAgent)
 			continue
 		}
@@ -83,6 +91,10 @@ func (j *Jobs) BatchCopy(ctx context.Context, t *asynq.Task) error {
 }
 
 func (j *Jobs) BatchMove(ctx context.Context, t *asynq.Task) error {
+	s3 := j.client(ctx)
+	if skipS3(s3, queue.TaskBatchMove) {
+		return nil
+	}
 	var p queue.BatchMove
 	if err := json.Unmarshal(t.Payload(), &p); err != nil || strings.TrimSpace(p.BucketName) == "" || len(p.Items) == 0 {
 		return fmt.Errorf("invalid batch move payload")
@@ -97,7 +109,7 @@ func (j *Jobs) BatchMove(ctx context.Context, t *asynq.Task) error {
 	now := time.Now()
 	var ok int
 	for _, it := range p.Items {
-		if err := objects.ApplyMove(ctx, j.S3, j.Objects, b, p.UserID, it.SourceKey, it.DestKey, now); err != nil {
+		if err := objects.ApplyMove(ctx, s3, j.Objects, b, p.UserID, it.SourceKey, it.DestKey, now); err != nil {
 			j.audit(ctx, p.UserID, p.AccountID, p.BucketName, it.SourceKey, "move", "failure", objects.CopyErr(err), p.SourceIP, p.UserAgent)
 			continue
 		}

@@ -38,9 +38,11 @@ func main() {
 		SecretKey: cfg.RGWSecretKey,
 		Region:    cfg.S3Region,
 	}
-	if !s3cfg.Ready() {
-		slog.Error("S3_ENDPOINT/RGW_ACCESS_KEY/RGW_SECRET_KEY are required for the inventory worker")
-		os.Exit(1)
+	var s3 *storage.Client
+	if s3cfg.Ready() {
+		s3 = storage.New(s3cfg)
+	} else {
+		slog.Info("S3 not configured; object tasks will skip until S3_ENDPOINT/RGW_ACCESS_KEY/RGW_SECRET_KEY are set")
 	}
 
 	redisOpt, err := asynq.ParseRedisURI(cfg.RedisURL)
@@ -63,7 +65,8 @@ func main() {
 		Uploads:  uploads.NewStore(pool),
 		Settings: platform.NewStore(pool),
 		Stats:    stats.NewStore(pool),
-		S3:       storage.New(s3cfg),
+		S3:       s3,
+		S3FB:     s3cfg,
 		Log:      audit.NewLogger(pool),
 	}
 

@@ -269,6 +269,17 @@ func (s *Store) ListActive(ctx context.Context) ([]Bucket, error) {
 	return out, rows.Err()
 }
 
+func (s *Store) MarkInventoried(ctx context.Context, id int64, at time.Time) error {
+	if s == nil || s.pool == nil {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE buckets SET inventoried_at = $2 WHERE id = $1`, id, at)
+	if err != nil {
+		return fmt.Errorf("mark inventoried: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) GetByName(ctx context.Context, name string) (*Bucket, error) {
 	b, err := scanBucket(s.pool.QueryRow(ctx, `SELECT `+bucketCols+` FROM buckets WHERE bucket_name = $1`, name))
 	if err == pgx.ErrNoRows {
