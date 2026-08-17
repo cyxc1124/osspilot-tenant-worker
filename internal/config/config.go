@@ -3,6 +3,7 @@ package config
 import "os"
 
 type Config struct {
+	HTTPAddr     string
 	DatabaseURL  string
 	RedisURL     string
 	S3Endpoint   string
@@ -13,6 +14,7 @@ type Config struct {
 
 func Load() Config {
 	return Config{
+		HTTPAddr:     getenv("HTTP_ADDR", ":8080"),
 		DatabaseURL:  os.Getenv("DATABASE_URL"),
 		RedisURL:     os.Getenv("REDIS_URL"),
 		S3Endpoint:   os.Getenv("S3_ENDPOINT"),
