@@ -99,7 +99,13 @@ func (g *Group) Claim(ctx context.Context, slot, typ, id string, ttl time.Durati
 }
 
 func (g *Group) DropClaim(ctx context.Context, slot, typ, id string) {
-	_ = g.rdb.Del(ctx, ClaimKey(slot, typ, id)).Err()
+	c, cancel := dropCtx(ctx)
+	defer cancel()
+	_ = g.rdb.Del(c, ClaimKey(slot, typ, id)).Err()
+}
+
+func dropCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 }
 
 func (g *Group) prefix() string {

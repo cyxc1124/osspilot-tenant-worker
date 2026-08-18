@@ -1,6 +1,7 @@
 package sched
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -35,5 +36,15 @@ func TestSlot(t *testing.T) {
 func TestClaimKey(t *testing.T) {
 	if got := ClaimKey("2026-08-18T04:00:00Z", "inventory", "9"); got != "osspilot:claim:2026-08-18T04:00:00Z:inventory:9" {
 		t.Fatalf("key %s", got)
+	}
+}
+
+func TestDropCtxIgnoresCancel(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+	c, stop := dropCtx(parent)
+	defer stop()
+	if err := c.Err(); err != nil {
+		t.Fatalf("canceled parent leaked: %v", err)
 	}
 }
