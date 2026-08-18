@@ -146,7 +146,37 @@ func (j *Jobs) scanBucket(ctx context.Context, s3 *storage.Client, b bucket.Buck
 	return j.Buckets.MarkInventoried(ctx, b.ID, time.Now().UTC())
 }
 
+func parseBucketJob(t *asynq.Task) (queue.BucketJob, error) {
+	var p queue.BucketJob
+	if err := json.Unmarshal(t.Payload(), &p); err != nil || strings.TrimSpace(p.BucketName) == "" {
+		return p, fmt.Errorf("invalid bucket payload")
+	}
+	return p, nil
+}
+
+func (j *Jobs) TrashBucket(ctx context.Context, t *asynq.Task) error {
+	p, err := parseBucketJob(t)
+	if err != nil {
+		return err
+	}
+	if p.BucketID < 1 {
+		b, err := j.Buckets.GetByName(ctx, p.BucketName)
+		if err != nil {
+			return err
+		}
+		if b == nil {
+			return fmt.Errorf("bucket %s not found", p.BucketName)
+		}
+		p.BucketID = b.ID
+	}
+	return j.trash(ctx, p.BucketID)
+}
+
 func (j *Jobs) Trash(ctx context.Context, _ *asynq.Task) error {
+	return j.trash(ctx, 0)
+}
+
+func (j *Jobs) trash(ctx context.Context, bucketID int64) error {
 	s3 := j.client(ctx)
 	if skipS3(s3, TaskTrash) {
 		return nil
@@ -162,7 +192,12 @@ func (j *Jobs) Trash(ctx context.Context, _ *asynq.Task) error {
 		slog.Info("trash cleanup skipped", "enabled", enabled, "days", days)
 		return nil
 	}
-	items, err := j.Objects.ExpiredTrash(ctx, days)
+	var items []objects.TrashObject
+	if bucketID > 0 {
+		items, err = j.Objects.ExpiredTrashInBucket(ctx, days, bucketID)
+	} else {
+		items, err = j.Objects.ExpiredTrash(ctx, days)
+	}
 	if err != nil {
 		return err
 	}
@@ -185,7 +220,19 @@ func shouldCleanupTrash(enabled bool, days int) bool {
 	return enabled && days >= 1
 }
 
+func (j *Jobs) VersionsBucket(ctx context.Context, t *asynq.Task) error {
+	p, err := parseBucketJob(t)
+	if err != nil {
+		return err
+	}
+	return j.cleanVersions(ctx, p.BucketName)
+}
+
 func (j *Jobs) CleanVersions(ctx context.Context, _ *asynq.Task) error {
+	return j.cleanVersions(ctx, "")
+}
+
+func (j *Jobs) cleanVersions(ctx context.Context, bucketName string) error {
 	s3 := j.client(ctx)
 	if skipS3(s3, TaskVersions) {
 		return nil
@@ -201,7 +248,12 @@ func (j *Jobs) CleanVersions(ctx context.Context, _ *asynq.Task) error {
 		slog.Info("version cleanup skipped", "enabled", enabled, "days", days)
 		return nil
 	}
-	items, err := j.Versions.Expired(ctx, days)
+	var items []versions.Record
+	if bucketName != "" {
+		items, err = j.Versions.ExpiredInBucket(ctx, days, bucketName)
+	} else {
+		items, err = j.Versions.Expired(ctx, days)
+	}
 	if err != nil {
 		return err
 	}
@@ -220,7 +272,19 @@ func (j *Jobs) CleanVersions(ctx context.Context, _ *asynq.Task) error {
 	return nil
 }
 
+func (j *Jobs) MultipartBucket(ctx context.Context, t *asynq.Task) error {
+	p, err := parseBucketJob(t)
+	if err != nil {
+		return err
+	}
+	return j.cleanMultipart(ctx, p.BucketName)
+}
+
 func (j *Jobs) CleanMultipart(ctx context.Context, _ *asynq.Task) error {
+	return j.cleanMultipart(ctx, "")
+}
+
+func (j *Jobs) cleanMultipart(ctx context.Context, bucketName string) error {
 	s3 := j.client(ctx)
 	if skipS3(s3, TaskMultipart) {
 		return nil
@@ -236,7 +300,12 @@ func (j *Jobs) CleanMultipart(ctx context.Context, _ *asynq.Task) error {
 		slog.Info("multipart cleanup skipped", "enabled", enabled, "days", days)
 		return nil
 	}
-	items, err := j.Uploads.StaleMultipart(ctx, days)
+	var items []uploads.Task
+	if bucketName != "" {
+		items, err = j.Uploads.StaleMultipartInBucket(ctx, days, bucketName)
+	} else {
+		items, err = j.Uploads.StaleMultipart(ctx, days)
+	}
 	if err != nil {
 		return err
 	}
