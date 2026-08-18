@@ -13,6 +13,7 @@ import (
 	"github.com/cyxc1124/osspilot-tenant-worker/internal/audit"
 	"github.com/cyxc1124/osspilot-tenant-worker/internal/bucket"
 	"github.com/cyxc1124/osspilot-tenant-worker/internal/config"
+	"github.com/cyxc1124/osspilot-tenant-worker/internal/logx"
 	"github.com/cyxc1124/osspilot-tenant-worker/internal/objects"
 	"github.com/cyxc1124/osspilot-tenant-worker/internal/platform"
 	"github.com/cyxc1124/osspilot-tenant-worker/internal/queue"
@@ -24,6 +25,7 @@ import (
 )
 
 func main() {
+	logx.Setup("osspilot-tenant-worker")
 	cfg := config.Load()
 	if cfg.RedisURL == "" {
 		slog.Error("REDIS_URL is required for the inventory worker")
@@ -123,10 +125,21 @@ func main() {
 
 	go serveHealthz(cfg.HTTPAddr)
 	slog.Info("worker listen")
-	if err := srv.Run(mux); err != nil {
+	if err := srv.Run(withTaskLog(mux)); err != nil {
 		slog.Error("worker", "err", err)
 		os.Exit(1)
 	}
+}
+
+func withTaskLog(next asynq.Handler) asynq.Handler {
+	return asynq.HandlerFunc(func(ctx context.Context, t *asynq.Task) error {
+		slog.Info("task start", "type", t.Type())
+		if err := next.ProcessTask(ctx, t); err != nil {
+			slog.Error("task fail", "type", t.Type(), "err", err)
+			return err
+		}
+		return nil
+	})
 }
 
 func serveHealthz(addr string) {
