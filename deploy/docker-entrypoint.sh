@@ -6,5 +6,6 @@ if [ "$#" -gt 0 ]; then
 fi
 case "$cmd" in
   worker) exec /app/worker "$@" ;;
+  scheduler) exec /app/scheduler "$@" ;;
   *) exec "$cmd" "$@" ;;
 esac

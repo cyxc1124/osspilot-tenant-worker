@@ -33,4 +33,4 @@ chore: 初始化租户 worker 仓
 - Go 1.26，`pgx/v5`，asynq。不用 Gin / GORM。不跑 migrate。
 - 一片一变，过 CI 再合。不要顺手做邻片。
 - 暂时不写功能测试；只留能挡住编译的最小检查。
-- 入口 `command` 默认 `worker`。
+- 同一镜像两个 command：`worker`（默认）和 `scheduler`。worker 不调度。

@@ -11,7 +11,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker \
+ && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/scheduler ./cmd/scheduler
 
 FROM alpine:3.22 AS runtime
 
@@ -22,7 +23,7 @@ RUN apk add --no-cache ca-certificates tzdata \
  && adduser -D -H -u 10001 app
 
 WORKDIR /app
-COPY --from=builder /out/worker /app/
+COPY --from=builder /out/worker /out/scheduler /app/
 COPY --chmod=755 deploy/docker-entrypoint.sh /docker-entrypoint.sh
 
 LABEL org.opencontainers.image.source=https://github.com/cyxc1124/osspilot-tenant-worker

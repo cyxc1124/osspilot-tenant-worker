@@ -116,14 +116,27 @@ func (s *Store) Insert(ctx context.Context, r *Record) error {
 }
 
 func (s *Store) Expired(ctx context.Context, days int) ([]Record, error) {
-	rows, err := s.pool.Query(ctx, `
+	return s.expired(ctx, days, "")
+}
+
+func (s *Store) ExpiredInBucket(ctx context.Context, days int, bucketName string) ([]Record, error) {
+	return s.expired(ctx, days, bucketName)
+}
+
+func (s *Store) expired(ctx context.Context, days int, bucketName string) ([]Record, error) {
+	q := `
 		SELECT v.id, v.bucket_name, v.object_key, v.version_no, v.storage_key, v.size, v.etag,
 			v.created_by, u.username, v.created_at, v.source, v.remark
 		FROM file_versions v
 		LEFT JOIN tenant_users u ON u.id = v.created_by
-		WHERE v.created_at < now() - ($1 * interval '1 day')
-		ORDER BY v.id
-		LIMIT 5000`, days)
+		WHERE v.created_at < now() - ($1 * interval '1 day')`
+	args := []any{days}
+	if bucketName != "" {
+		q += ` AND v.bucket_name = $2`
+		args = append(args, bucketName)
+	}
+	q += ` ORDER BY v.id LIMIT 5000`
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("expired versions: %w", err)
 	}
