@@ -13,10 +13,19 @@ import (
 
 const (
 	TaskInventoryBucket = "objects:inventory_bucket"
+	TaskTrashBucket     = "objects:trash_bucket"
+	TaskVersionsBucket  = "objects:versions_bucket"
+	TaskMultipartBucket = "objects:multipart_bucket"
+	TaskRequestStats    = "stats:requests"
 	TaskBatchDelete     = "objects:batch_delete"
 	TaskBatchCopy       = "objects:batch_copy"
 	TaskBatchMove       = "objects:batch_move"
 )
+
+type BucketJob struct {
+	BucketID   int64  `json:"bucket_id"`
+	BucketName string `json:"bucket_name"`
+}
 
 var ErrUnavailable = errors.New("task queue unavailable")
 

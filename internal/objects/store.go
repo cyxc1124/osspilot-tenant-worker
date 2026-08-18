@@ -263,11 +263,25 @@ type TrashObject struct {
 }
 
 func (s *Store) ExpiredTrash(ctx context.Context, days int) ([]TrashObject, error) {
-	rows, err := s.pool.Query(ctx, `
+	return s.expiredTrash(ctx, days, 0)
+}
+
+func (s *Store) ExpiredTrashInBucket(ctx context.Context, days int, bucketID int64) ([]TrashObject, error) {
+	return s.expiredTrash(ctx, days, bucketID)
+}
+
+func (s *Store) expiredTrash(ctx context.Context, days int, bucketID int64) ([]TrashObject, error) {
+	q := `
 		SELECT bucket_id, bucket_name, object_key
 		FROM object_records
 		WHERE object_key LIKE '.trash/%' AND object_key <> '.trash/'
-		  AND COALESCE(last_seen_at, updated_at) < now() - ($1 * interval '1 day')`, days)
+		  AND COALESCE(last_seen_at, updated_at) < now() - ($1 * interval '1 day')`
+	args := []any{days}
+	if bucketID > 0 {
+		q += ` AND bucket_id = $2`
+		args = append(args, bucketID)
+	}
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("expired trash: %w", err)
 	}

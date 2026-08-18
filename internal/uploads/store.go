@@ -87,13 +87,26 @@ func (s *Store) CompletedBytesSince(ctx context.Context, accountID int64, since 
 
 // StaleMultipart returns pending multipart tasks past age or expired_at.
 func (s *Store) StaleMultipart(ctx context.Context, staleDays int) ([]Task, error) {
-	rows, err := s.pool.Query(ctx, `
+	return s.staleMultipart(ctx, staleDays, "")
+}
+
+func (s *Store) StaleMultipartInBucket(ctx context.Context, staleDays int, bucketName string) ([]Task, error) {
+	return s.staleMultipart(ctx, staleDays, bucketName)
+}
+
+func (s *Store) staleMultipart(ctx context.Context, staleDays int, bucketName string) ([]Task, error) {
+	q := `
 		SELECT id, user_id, bucket_name, object_key, upload_type, upload_id, size, content_type, status
 		FROM upload_tasks
 		WHERE upload_type = $1 AND status = $2
-		  AND (expired_at < now() OR created_at < now() - ($3 * interval '1 day'))
-		ORDER BY id
-		LIMIT 5000`, TypeMultipart, StatusPending, staleDays)
+		  AND (expired_at < now() OR created_at < now() - ($3 * interval '1 day'))`
+	args := []any{TypeMultipart, StatusPending, staleDays}
+	if bucketName != "" {
+		q += ` AND bucket_name = $4`
+		args = append(args, bucketName)
+	}
+	q += ` ORDER BY id LIMIT 5000`
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("stale multipart: %w", err)
 	}
