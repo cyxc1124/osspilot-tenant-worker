@@ -24,6 +24,8 @@ S3 凭证先看环境变量，再被租户库 `platform_settings` 覆盖。未�
 
 `GET /healthz` 默认 `:8080`（`HTTP_ADDR`）。
 
+日志走 stdout（`log/slog`）。`LOG_LEVEL=debug|info|warn|error`（默认 info），`LOG_FORMAT=text|json`（默认 text）。每个任务有 `task start`，失败打 `task fail`。
+
 ## 本地
 
 不跑迁移（迁移只在 API 仓）：
