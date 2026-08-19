@@ -31,24 +31,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Detect develop/main tip
-        id: tips
-        run: |
-          set -euo pipefail
-          sha=$(git rev-parse HEAD)
-          git fetch origin develop:refs/remotes/origin/develop || true
-          git fetch origin main:refs/remotes/origin/main || true
-          for b in develop main; do
-            if git rev-parse "origin/${b}" >/dev/null 2>&1 \
-              && [ "$(git rev-parse "origin/${b}")" = "${sha}" ]; then
-              echo "${b}=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "${b}=false" >> "$GITHUB_OUTPUT"
-            fi
-          done
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -72,11 +54,9 @@ jobs:
           flavor: |
             latest=false
           tags: |
+            type=ref,event=branch
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
-            type=ref,event=branch
-            type=raw,value=develop,enable=${{ github.ref_type == 'tag' && steps.tips.outputs.develop == 'true' }}
-            type=raw,value=main,enable=${{ github.ref_type == 'tag' && steps.tips.outputs.main == 'true' }}
             type=sha,format=short
 
       - name: Build and push
