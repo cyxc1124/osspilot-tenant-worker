@@ -1,0 +1,60 @@
+# 测试对齐 GitHub CI。镜像用 Kaniko 推 GitLab Registry（K8s Runner 没有 Docker daemon）。
+# 多架构仍由 GitHub Actions 构建并推 GHCR。
+# :develop / :main 跟分支；:latest 只在 main；:v* 跟发行 tag。
+
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v.+/
+
+default:
+  interruptible: true
+
+variables:
+  GOPROXY: https://goproxy.cn,https://proxy.golang.org,direct
+  GOTOOLCHAIN: local
+
+stages:
+  - test
+  - build
+
+test:
+  stage: test
+  image: golang:1.26
+  cache:
+    key: go-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cache/go-build
+      - .go/pkg/mod
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+    GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+  script:
+    - test -z "$(gofmt -l .)"
+    - go vet ./...
+    - go test ./...
+    - go build ./cmd/...
+
+build:
+  stage: build
+  image:
+    name: martizih/kaniko:v1.28.3-debug
+    entrypoint: [""]
+  interruptible: false
+  timeout: 1h
+  needs:
+    - test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v.+/
+  script:
+    - /busybox/sh scripts/kaniko-build.sh
